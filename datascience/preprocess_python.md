@@ -701,3 +701,394 @@ df = df2.merge(df1, on='customer_id')
 df['passed_dt'] = df['sales_dt'] - df['application_date_dt']
 df.head(10)[['customer_id', 'sales_ymd', 'application_date', 'passed_dt']]
 ```
+
+### P-071
+
+レシート明細データフレーム（df_receipt）の売上日（sales_ymd）に対し、顧客データフレーム（df_customer）の会員申込日（application_date）からの経過月数を計算し、顧客ID（customer_id）、売上日、会員申込日とともに表示せよ。結果は10件表示させれば良い（なお、sales_ymdは数値、application_dateは文字列でデータを保持している点に注意）。1ヶ月未満は切り捨てること。
+
+```
+df1 = df_customer[['customer_id', 'application_date']].copy()
+df1['application_date_dt'] = df1['application_date'].apply(lambda x: datetime.strptime(x, '%Y%m%d'))
+df2 = df_receipt[['customer_id', 'sales_ymd']].copy()
+df2['sales_dt'] = df2['sales_ymd'].apply(lambda x: datetime.strptime(str(x), '%Y%m%d'))
+df = df2.merge(df1, on='customer_id')
+df['passed_m'] = df.apply(lambda row: row['sales_dt'].year * 12 + row['sales_dt'].month - row['application_date_dt'].year * 12 - row['application_date_dt'].month, axis=1)
+df.head(10)[['customer_id', 'sales_ymd', 'application_date', 'passed_m']]
+```
+
+### P-072
+
+レシート明細データフレーム（df_receipt）の売上日（sales_ymd）に対し、顧客データフレーム（df_customer）の会員申込日（application_date）からの経過年数を計算し、顧客ID（customer_id）、売上日、会員申込日とともに表示せよ。結果は10件表示させれば良い（なお、sales_ymdは数値、application_dateは文字列でデータを保持している点に注意）。1年未満は切り捨てること。
+
+```python
+df1 = df_customer[['customer_id', 'application_date']].copy()
+df1['application_date_dt'] = df1['application_date'].apply(lambda x: datetime.strptime(x, '%Y%m%d'))
+df2 = df_receipt[['customer_id', 'sales_ymd']].copy()
+df2['sales_dt'] = df2['sales_ymd'].apply(lambda x: datetime.strptime(str(x), '%Y%m%d'))
+df = df2.merge(df1, on='customer_id')
+df['passed_y'] = df.apply(lambda row: row['sales_dt'].year - row['application_date_dt'].year, axis=1)
+df.head(10)[['customer_id', 'sales_ymd', 'application_date', 'passed_y']]
+```
+
+### P-073
+
+レシート明細データフレーム（df_receipt）の売上日（sales_ymd）に対し、顧客データフレーム（df_customer）の会員申込日（application_date）からのエポック秒による経過時間を計算し、顧客ID（customer_id）、売上日、会員申込日とともに表示せよ。結果は10件表示させれば良い（なお、sales_ymdは数値、application_dateは文字列でデータを保持している点に注意）。なお、時間情報は保有していないため各日付は0時0分0秒を表すものとする
+
+```python
+df1 = df_customer[['customer_id', 'application_date']].copy()
+df1['application_date_dt'] = df1['application_date'].apply(lambda x: datetime.strptime(x, '%Y%m%d'))
+df2 = df_receipt[['customer_id', 'sales_ymd']].copy()
+df2['sales_dt'] = df2['sales_ymd'].apply(lambda x: datetime.strptime(str(x), '%Y%m%d'))
+df = df2.merge(df1, on='customer_id')
+df['passed_epoch'] = (df['sales_dt'] - df['application_date_dt']).apply(lambda x: x.total_seconds())
+df.head(10)[['customer_id', 'sales_ymd', 'application_date', 'passed_epoch']]
+```
+
+### P-074
+
+レシート明細データフレーム（df_receipt）の売上日（sales_ymd）に対し、当該週の月曜日からの経過日数を計算し、売上日、当該週の月曜日付とともに表示せよ。結果は10件表示させれば良い（なお、sales_ymdは数値でデータを保持している点に注意）。
+
+```python
+from datetime import timedelta
+df = df_receipt[['sales_ymd']].copy()
+df['sales_ymd'] = df['sales_ymd'].apply(lambda x: datetime.strptime(str(x), '%Y%m%d'))
+df['elapsed_since_monday'] = df['sales_ymd'].apply(lambda x: x.isoweekday() - 1)
+df['monday'] = df['sales_ymd'].apply(lambda x: x - timedelta(days=x.isoweekday() - 1))
+df.head(10)
+```
+
+### P-075
+
+顧客データフレーム（df_customer）からランダムに1%のデータを抽出し、先頭から10件データを抽出せよ。
+
+```python
+df_customer.sample(frac=0.01).head(10)
+```
+
+### P-076
+
+顧客データフレーム（df_customer）から性別（gender_cd）の割合に基づきランダムに10%のデータを層化抽出し、性別ごとに件数を集計せよ。
+
+```python
+for gender in df_customer.gender_cd.unique():
+    df_gender = df_customer.query(f'gender_cd == "{gender}"')
+    print(f'gender: {gender}, num of 10% sample: {len(df_gender.sample(frac=0.1))}')
+```
+
+### P-077
+
+レシート明細データフレーム（df_receipt）の売上金額（amount）を顧客単位に合計し、合計した売上金額の外れ値を抽出せよ。ただし、顧客IDが"Z"から始まるのものは非会員を表すため、除外して計算すること。なお、ここでは外れ値を平均から3σ以上離れたものとする。結果は10件表示させれば良い。
+
+```python
+df = df_receipt.query('not customer_id.str.startswith("Z")', engine='python')[['customer_id', 'amount']].groupby('customer_id').sum()
+amount_mean = df.mean()['amount']
+amount_std = df.std()['amount']
+outliers = df.query(f'amount < {amount_mean - amount_std * 3} or {amount_mean + amount_std * 3} < amount')
+outliers.head(10)
+```
+
+### P-078
+
+レシート明細データフレーム（df_receipt）の売上金額（amount）を顧客単位に合計し、合計した売上金額の外れ値を抽出せよ。ただし、顧客IDが"Z"から始まるのものは非会員を表すため、除外して計算すること。なお、ここでは外れ値を第一四分位と第三四分位の差であるIQRを用いて、「第一四分位数-1.5×IQR」よりも下回るもの、または「第三四分位数+1.5×IQR」を超えるものとする。結果は10件表示させれば良い。
+
+```python
+df = df_receipt.query('not customer_id.str.startswith("Z")', engine='python')[['customer_id', 'amount']].groupby('customer_id').sum()
+qs = df.quantile((0.25, 0.75))
+iqr = qs.amount[0.75] - qs.amount[0.25]
+th_l = qs.amount[0.25] - iqr * 1.5
+th_h = qs.amount[0.75] + iqr * 1.5
+outliers = df.query(f'not ({th_l} <= amount <= {th_h})')
+outliers.head(10)
+```
+
+### P-079
+
+商品データフレーム（df_product）の各項目に対し、欠損数を確認せよ。
+
+```python
+(df_product.isnull() | df_product.isna()).sum()
+```
+
+### P-080
+
+商品データフレーム（df_product）のいずれかの項目に欠損が発生しているレコードを全て削除した新たなdf_product_1を作成せよ。なお、削除前後の件数を表示させ、前設問で確認した件数だけ減少していることも確認すること。
+
+```python
+df_product_1 = df_product.dropna()
+print(f'df_product count: {len(df_product)}, df_product_1 count: {len(df_product_1)}')
+```
+
+### P-081
+
+単価（unit_price）と原価（unit_cost）の欠損値について、それぞれの平均値で補完した新たなdf_product_2を作成せよ。なお、平均値については1円未満を丸めること（四捨五入または偶数への丸めで良い）。補完実施後、各項目について欠損が生じていないことも確認すること。
+
+```python
+df_product_2 = df_product.copy()
+df_product_2['unit_price'].fillna(np.round(df_product_2['unit_price'].mean(skipna=True)), inplace=True)
+df_product_2['unit_cost'].fillna(np.round(df_product_2['unit_cost'].mean(skipna=True)), inplace=True)
+(df_product_2.isnull() | df_product_2.isna()).sum()
+```
+
+### P-082
+
+単価（unit_price）と原価（unit_cost）の欠損値について、それぞれの中央値で補完した新たなdf_product_3を作成せよ。なお、中央値については1円未満を丸めること（四捨五入または偶数への丸めで良い）。補完実施後、各項目について欠損が生じていないことも確認すること。
+
+```python
+df_product_3 = df_product.copy()
+df_product_3['unit_price'].fillna(np.round(df_product_3['unit_price'].median(skipna=True)), inplace=True)
+df_product_3['unit_cost'].fillna(np.round(df_product_3['unit_cost'].median(skipna=True)), inplace=True)
+(df_product_3.isnull() | df_product_3.isna()).sum()
+```
+
+### P-083
+
+単価（unit_price）と原価（unit_cost）の欠損値について、各商品の小区分（category_small_cd）ごとに算出した中央値で補完した新たなdf_product_4を作成せよ。なお、中央値については1円未満を丸めること（四捨五入または偶数への丸めで良い）。補完実施後、各項目について欠損が生じていないことも確認すること。
+
+```python
+df_medians = np.round(df_product.groupby('category_small_cd').median())
+df_product_nonull = df_product.dropna()
+df_product_null = df_product[(df_product.isnull() | df_product.isna()).any(axis=1)]
+del(df_product_null['unit_price'])
+del(df_product_null['unit_cost'])
+df_product_4 = pd.concat((
+    df_product_nonull,
+    df_product_null.merge(df_medians, on='category_small_cd', how='left')
+))
+(df_product_4.isna() | df_product_4.isnull()).sum()
+```
+
+### P-084
+
+顧客データフレーム（df_customer）の全顧客に対し、全期間の売上金額に占める2019年売上金額の割合を計算せよ。ただし、売上実績がない場合は0として扱うこと。そして計算した割合が0超のものを抽出せよ。 結果は10件表示させれば良い。また、作成したデータにNAやNANが存在しないことを確認せよ。
+
+```python
+df = df_customer[['customer_id']].merge(
+    df_receipt[['customer_id', 'sales_ymd', 'amount']],
+    on='customer_id',
+    how='left'
+)
+df['amount'].fillna(0, inplace=True)
+df_amount_all = df[['customer_id', 'amount']].groupby('customer_id').sum()
+df_amount_2019 = df.query('20190000 < sales_ymd < 20200000')[['customer_id', 'amount']].groupby('customer_id').sum()
+df2 = df_amount_all.merge(df_amount_2019, on='customer_id', how='left')
+df2['r2019'] = df2['amount_y'] / df2['amount_x']
+df2.fillna(0, inplace=True)
+print(df2.query('r2019 > 0').head(10))
+(df2.isnull() | df2.isna()).sum()
+```
+
+### P-085
+
+顧客データフレーム（df_customer）の全顧客に対し、郵便番号（postal_cd）を用いて経度緯度変換用データフレーム（df_geocode）を紐付け、新たなdf_customer_1を作成せよ。ただし、複数紐づく場合は経度（longitude）、緯度（latitude）それぞれ平均を算出すること。
+
+```python
+df_customer_1 = df_customer.merge(
+    df_geocode.groupby('postal_cd').mean(),
+    on='postal_cd',
+    how='left'
+)
+df_customer_1.head(5)
+```
+
+### P-086
+
+前設問で作成した緯度経度つき顧客データフレーム（df_customer_1）に対し、申込み店舗コード（application_store_cd）をキーに店舗データフレーム（df_store）と結合せよ。そして申込み店舗の緯度（latitude）・経度情報（longitude)と顧客の緯度・経度を用いて距離（km）を求め、顧客ID（customer_id）、顧客住所（address）、店舗住所（address）とともに表示せよ。計算式は簡易式で良いものとするが、その他精度の高い方式を利用したライブラリを利用してもかまわない。結果は10件表示すれば良い。
+
+```python
+df_store2 = df_store[['store_cd', 'address', 'latitude', 'longitude']] \
+  .rename(columns={'store_cd': 'application_store_cd', 'latitude': 'store_latitude', 'longitude': 'store_longitude', 'address': 'store_address'})
+df = df_customer_1.merge(
+    df_store2,
+    on='application_store_cd',
+    how='left'
+)
+df['distance'] = 6371 * np.arccos(
+    np.sin(df['latitude'] / 180 * np.pi) * np.sin(df['store_latitude'] / 180 * np.pi) +
+    np.cos(df['latitude'] / 180 * np.pi) * np.cos(df['store_latitude'] / 180 * np.pi) *
+    np.cos(df['longitude'] / 180 * np.pi - df['store_longitude'] / 180 * np.pi)
+)
+df[['customer_id', 'address', 'store_address', 'distance']].head()
+```
+
+### P-087
+
+顧客データフレーム（df_customer）では、異なる店舗での申込みなどにより同一顧客が複数登録されている。名前（customer_name）と郵便番号（postal_cd）が同じ顧客は同一顧客とみなし、1顧客1レコードとなるように名寄せした名寄顧客データフレーム（df_customer_u）を作成せよ。ただし、同一顧客に対しては売上金額合計が最も高いものを残すものとし、売上金額合計が同一もしくは売上実績がない顧客については顧客ID（customer_id）の番号が小さいものを残すこととする。
+
+```python
+df_amount = df_receipt[['customer_id', 'amount']].groupby('customer_id').sum()
+df_customer_u = df_customer.merge(df_amount, on='customer_id', how='left')
+df_customer_u['amount'].fillna(0, inplace=True)
+df_customer_u.sort_values(['amount', 'customer_id'], ascending=[False, True], inplace=True)
+df_customer_u.drop_duplicates(keep='first', subset=['customer_name', 'postal_cd'], inplace=True)
+```
+
+### P-088
+
+前設問で作成したデータを元に、顧客データフレームに統合名寄IDを付与したデータフレーム（df_customer_n）を作成せよ。ただし、統合名寄IDは以下の仕様で付与するものとする。
+
+* 重複していない顧客：顧客ID（customer_id）を設定
+* 重複している顧客：前設問で抽出したレコードの顧客IDを設定
+
+```python
+df = df_customer_u[['customer_name', 'postal_cd', 'customer_id']].rename(columns={'customer_id': 'customer_id_n'})
+df_customer_n = df_customer.merge(df, on=['customer_name', 'postal_cd'], how='left')
+df_customer_n.head(10)
+```
+
+### P-閑話
+
+df_customer_1, df_customer_nは使わないので削除する。
+
+```Python
+del(df_customer_1)
+del(df_customer_n)
+```
+
+### P-089
+
+売上実績がある顧客に対し、予測モデル構築のため学習用データとテスト用データに分割したい。それぞれ8:2の割合でランダムにデータを分割せよ。
+
+```python
+df = df_customer.merge(
+    df_receipt[['customer_id', 'amount']].groupby('customer_id').sum(),
+    on='customer_id',
+    how='left'
+)
+customer_with_sales = df.query('amount > 0')
+train_data, test_data = train_test_split(customer_with_sales, test_size=0.2)
+```
+
+### P-090
+
+レシート明細データフレーム（df_receipt）は2017年1月1日〜2019年10月31日までのデータを有している。売上金額（amount）を月次で集計し、学習用に12ヶ月、テスト用に6ヶ月のモデル構築用データを3セット作成せよ。
+
+```python
+何をするモデルを構築するのか不明であり、解答不能
+```
+
+### P-091
+
+顧客データフレーム（df_customer）の各顧客に対し、売上実績がある顧客数と売上実績がない顧客数が1:1となるようにアンダーサンプリングで抽出せよ。
+
+```python
+df = df_customer.merge(
+    df_receipt[['customer_id', 'amount']].groupby('customer_id').sum(),
+    on='customer_id',
+    how='left'
+)
+df['amount'].fillna(0, inplace=True)
+customer_with_sales = df.query('amount > 0')
+customer_without_sales = df.query('amount == 0')
+sample_size = min(len(customer_with_sales), len(customer_without_sales))
+pd.concat((
+    customer_with_sales.sample(sample_size),
+    customer_without_sales.sample(sample_size)
+))
+```
+
+### P-092
+
+顧客データフレーム（df_customer）では、性別に関する情報が非正規化の状態で保持されている。これを第三正規化せよ。
+
+```python
+df_gender = df_customer[['gender_cd', 'gender']].drop_duplicates()
+del(df_customer['gender'])
+```
+
+### P-093
+
+商品データフレーム（df_product）では各カテゴリのコード値だけを保有し、カテゴリ名は保有していない。カテゴリデータフレーム（df_category）と組み合わせて非正規化し、カテゴリ名を保有した新たな商品データフレームを作成せよ。
+
+```python
+df_product_2 = df_product.merge(
+    df_category,
+    on=['category_major_cd', 'category_medium_cd', 'category_small_cd'],
+    how='left'
+)
+```
+
+### P-094
+
+先に作成したカテゴリ名付き商品データを以下の仕様でファイル出力せよ。なお、出力先のパスはdata配下とする。
+
+* ファイル形式はCSV（カンマ区切り）
+* ヘッダ有り
+* 文字コードはUTF-8
+
+
+```python
+df_product_2.to_csv('data/products_2.csv', header=True, encoding='UTF-8')
+```
+
+### P-095
+
+先に作成したカテゴリ名付き商品データを以下の仕様でファイル出力せよ。なお、出力先のパスはdata配下とする。
+
+* ファイル形式はCSV（カンマ区切り）
+* ヘッダ有り
+* 文字コードはCP932
+
+```python
+df_product_2.to_csv('data/products_2.csv', header=True, encoding='CP932')
+```
+
+### P-096
+
+先に作成したカテゴリ名付き商品データを以下の仕様でファイル出力せよ。なお、出力先のパスはdata配下とする。
+
+* ファイル形式はCSV（カンマ区切り）
+* ヘッダ無し
+* 文字コードはUTF-8
+
+```python
+df_product_2.to_csv('data/products_2.csv', header=True, encoding='UTF-8')
+```
+
+### P-097
+
+先に作成した以下形式のファイルを読み込み、データフレームを作成せよ。また、先頭3件を表示させ、正しくとりまれていることを確認せよ。
+
+* ファイル形式はCSV（カンマ区切り）
+* ヘッダ有り
+* 文字コードはUTF-8
+
+
+```python
+pd.read_csv('data/products_2.csv', header=0, encoding='UTF-8').head(3)
+```
+
+### P-098
+
+先に作成した以下形式のファイルを読み込み、データフレームを作成せよ。また、先頭3件を表示させ、正しくとりまれていることを確認せよ。
+
+* ファイル形式はCSV（カンマ区切り）
+* ヘッダ無し
+* 文字コードはUTF-8
+
+```python
+pd.read_csv('data/products_2.csv', header=None, encoding='UTF-8').head(3)
+```
+
+### P-099
+
+先に作成したカテゴリ名付き商品データを以下の仕様でファイル出力せよ。なお、出力先のパスはdata配下とする。
+
+* ファイル形式はTSV（タブ区切り）
+* ヘッダ有り
+* 文字コードはUTF-8
+
+```python
+df_product_2.to_csv('data/products_2.tsv', quotechar='\t', header=True, encoding='UTF-8')
+```
+
+### P-100
+
+先に作成した以下形式のファイルを読み込み、データフレームを作成せよ。また、先頭3件を表示させ、正しくとりまれていることを確認せよ。
+
+* ファイル形式はTSV（タブ区切り）
+* ヘッダ有り
+* 文字コードはUTF-8
+
+```python
+pd.read_csv('data/products_2.tsv', quotechar='\t', header=0, encoding='UTF-8').head(3)
+```
